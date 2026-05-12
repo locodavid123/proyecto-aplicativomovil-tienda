@@ -37,6 +37,7 @@ dependencies:
 
   flutter_local_notifications: ^17.2.2
   local_notifier: ^0.1.6
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

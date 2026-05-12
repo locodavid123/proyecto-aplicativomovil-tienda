@@ -1,60 +1,65 @@
 import 'package:flutter/material.dart';
 import '../widgets/menu_card.dart';
-import '../widgets/section_header.dart';
 import '../widgets/drawer_tile.dart';
+import '../services/api_service.dart';
 import 'login_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   final bool isLoggedIn;
   final String? userName;
 
-  // Sugerencia: Mover esto a un modelo o servicio en el futuro
-  static const List<Map<String, dynamic>> _menuData = [
-    {
-      'category': 'Entradas',
-      'icon': Icons.emoji_food_beverage,
-      'color': Colors.orangeAccent,
-      'items': [
-        {
-          'title': 'Bruschetta',
-          'subtitle': 'Pan tostado con tomate',
-          'price': '6.000',
-          'icon': Icons.lunch_dining,
-          'color': Colors.orange,
-        },
-        {
-          'title': 'Ensalada Caprese',
-          'subtitle': 'Tomate y mozzarella',
-          'price': '18.000',
-          'icon': Icons.set_meal,
-          'color': Colors.teal,
-        },
-      ],
-    },
-    {
-      'category': 'Platos Fuertes',
-      'icon': Icons.restaurant_menu,
-      'color': Colors.redAccent,
-      'items': [
-        {
-          'title': 'Pasta Alfredo',
-          'subtitle': 'Pasta cremosa con pollo',
-          'price': '22.000',
-          'icon': Icons.ramen_dining,
-          'color': Colors.red,
-        },
-        {
-          'title': 'Pizza Margarita',
-          'subtitle': 'Tomate y albahaca',
-          'price': '25.000',
-          'icon': Icons.local_pizza,
-          'color': Colors.deepPurple,
-        },
-      ],
-    },
-  ];
-
   const HomePage({super.key, this.isLoggedIn = false, this.userName});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  List<dynamic> _allMeals = [];
+  List<dynamic> _filteredMeals = [];
+  List<String> _categories = ['Todas'];
+  String _selectedCategory = 'Todas';
+  String _searchQuery = '';
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final categories = await ApiService.fetchCategories();
+      final meals = await ApiService.fetchMeals('');
+      
+      setState(() {
+        _categories = ['Todas', ...categories];
+        _allMeals = meals;
+        _filteredMeals = meals;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _filterMeals(String query, String category) {
+    setState(() {
+      _searchQuery = query;
+      _selectedCategory = category;
+      
+      _filteredMeals = _allMeals.where((meal) {
+        final matchesQuery = meal['strMeal']
+                ?.toString()
+                .toLowerCase()
+                .contains(query.toLowerCase()) ?? false;
+        final matchesCategory = category == 'Todas' || meal['strCategory'] == category;
+        return matchesQuery && matchesCategory;
+      }).toList();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,9 +78,9 @@ class HomePage extends StatelessWidget {
           SliverAppBar(
             pinned: true,
             expandedHeight: 200,
-            backgroundColor: theme.colorScheme.primary,
+            backgroundColor: primaryColor,
             actions: [
-              if (!isLoggedIn)
+              if (!widget.isLoggedIn)
                 TextButton.icon(
                   onPressed: () {
                     Navigator.push(
@@ -110,65 +115,101 @@ class HomePage extends StatelessWidget {
               ),
             ),
           ),
+          
+          // Barra de búsqueda
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextField(
+                onChanged: (value) => _filterMeals(value, _selectedCategory),
+                decoration: InputDecoration(
+                  hintText: 'Buscar platillo...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[200],
+                ),
+              ),
+            ),
+          ),
 
-          // Renderizado dinámico de secciones
-          ..._buildMenuSections(),
+          // Filtro de categorías
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 50,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: _categories.length,
+                itemBuilder: (context, index) {
+                  final category = _categories[index];
+                  final isSelected = category == _selectedCategory;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(category),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        if (selected) {
+                          _filterMeals(_searchQuery, category);
+                        }
+                      },
+                      selectedColor: primaryColor.withValues(alpha: 0.2),
+                      labelStyle: TextStyle(
+                        color: isSelected ? primaryColor : Colors.black87,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+          // Contenido principal
+          if (_isLoading)
+            const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_filteredMeals.isEmpty)
+            const SliverFillRemaining(
+              child: Center(child: Text('No se encontraron platillos.')),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 0.75, // Ajustado para la imagen
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final meal = _filteredMeals[index];
+                    return MenuCard(
+                      title: meal['strMeal'] ?? 'Sin nombre',
+                      subtitle: meal['strCategory'] ?? 'Sin categoría',
+                      price: (meal['idMeal'] != null 
+                              ? (int.parse(meal['idMeal'].toString().substring(0, 2)) * 1000).toString() 
+                              : '15.000'), // Precio simulado basado en el ID
+                      imageUrl: meal['strMealThumb'],
+                      color: primaryColor,
+                    );
+                  },
+                  childCount: _filteredMeals.length,
+                ),
+              ),
+            ),
 
           const SliverToBoxAdapter(child: SizedBox(height: 80)),
         ],
-      ),
-    );
-  }
-
-  List<Widget> _buildMenuSections() {
-    List<Widget> sections = [];
-    for (var category in _menuData) {
-      sections.add(
-        _buildSectionTitle(
-          category['category'],
-          category['icon'],
-          category['color'],
-        ),
-      );
-      sections.add(
-        _buildMenuGrid(
-          (category['items'] as List)
-              .map(
-                (item) => MenuCard(
-                  title: item['title'],
-                  subtitle: item['subtitle'],
-                  price: item['price'],
-                  icon: item['icon'],
-                  color: item['color'],
-                ),
-              )
-              .toList(),
-        ),
-      );
-    }
-    return sections;
-  }
-
-  Widget _buildSectionTitle(String title, IconData icon, Color color) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
-        child: SectionHeader(title: title, icon: icon, color: color),
-      ),
-    );
-  }
-
-  Widget _buildMenuGrid(List<Widget> children) {
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      sliver: SliverGrid(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 0.85,
-        ),
-        delegate: SliverChildListDelegate(children),
       ),
     );
   }
@@ -206,8 +247,8 @@ class HomePage extends StatelessWidget {
                 const SizedBox(width: 16),
                 Expanded(
                   child: Text(
-                    userName != null
-                        ? 'Bienvenido, $userName'
+                    widget.userName != null
+                        ? 'Bienvenido, ${widget.userName}'
                         : 'Bienvenido a Oliva y Pimienta',
                     style: TextStyle(
                       fontSize: 18,
@@ -223,15 +264,41 @@ class HomePage extends StatelessWidget {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                const DrawerTile(icon: Icons.home, label: 'Inicio'),
-                const DrawerTile(icon: Icons.fastfood, label: 'Entradas'),
-                const DrawerTile(
+                DrawerTile(
+                  icon: Icons.home,
+                  label: 'Inicio',
+                  onTap: () {
+                    _filterMeals(_searchQuery, 'Todas');
+                  },
+                ),
+                DrawerTile(
+                  icon: Icons.cake,
+                  label: 'Postres',
+                  onTap: () {
+                    _filterMeals(_searchQuery, 'Dessert');
+                  },
+                ),
+                DrawerTile(
                   icon: Icons.restaurant,
                   label: 'Platos Fuertes',
+                  onTap: () {
+                    _filterMeals(_searchQuery, 'Beef');
+                  },
                 ),
-                const DrawerTile(icon: Icons.local_drink, label: 'Bebidas'),
-                const DrawerTile(icon: Icons.settings, label: 'Configuración'),
-                if (isLoggedIn) ...[
+                DrawerTile(
+                  icon: Icons.soup_kitchen,
+                  label: 'Sopas',
+                  onTap: () {
+                    _filterMeals(_searchQuery, 'Miscellaneous');
+                  },
+                ),
+                DrawerTile(
+                  icon: Icons.settings,
+                  label: 'Configuración',
+                  onTap: () {
+                  },
+                ),
+                if (widget.isLoggedIn) ...[
                   const Divider(),
                   DrawerTile(
                     icon: Icons.logout,
@@ -242,7 +309,7 @@ class HomePage extends StatelessWidget {
                         MaterialPageRoute(
                           builder: (context) => const LoginPage(),
                         ),
-                        (route) => false, // Limpia el historial de navegación
+                        (route) => false,
                       );
                     },
                   ),

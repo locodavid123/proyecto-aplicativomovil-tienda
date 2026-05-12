@@ -6,15 +6,17 @@ class MenuCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.price,
-    required this.icon,
+    this.icon,
     required this.color,
+    this.imageUrl,
   });
 
   final String title;
   final String subtitle;
   final String price;
-  final IconData icon;
+  final IconData? icon;
   final Color color;
+  final String? imageUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +38,9 @@ class MenuCard extends StatelessWidget {
               child: Container(
                 width: double.infinity,
                 color: color.withValues(alpha: 0.1),
-                child: Icon(icon, size: 48, color: color),
+                child: imageUrl != null
+                    ? Image.network(imageUrl!, fit: BoxFit.cover)
+                    : Icon(icon ?? Icons.restaurant, size: 48, color: color),
               ),
             ),
             Padding(
